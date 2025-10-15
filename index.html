@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MARKSHEET GENERATOR - ADESH SOFTWARE SOLUTIONS</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Load html2canvas for capturing HTML -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Load jsPDF for generating the PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        /* Custom styles for the marksheet template to ensure precise layout replication */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .marksheet-page {
+            /* Mimics A4 paper size for better PDF output */
+            width: 794px; /* A4 width in px at 96dpi */
+            min-height: 1123px; /* A4 height in px at 96dpi */
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        /* REINTRODUCING ORANGE HEADER */
+        .marksheet-header-orange {
+            background-color: #ff8c00; /* Deep Orange */
+            color: white !important;
+        }
+        /* Strict alignment control for data rows */
+        .data-label {
+            /* Fixed width ensures colon alignment */
+            width: 125px; 
+            min-width: 125px;
+            /* Label text aligned left as requested */
+            text-align: left;
+            font-weight: 600; /* Semi-bold for labels */
+            padding-left: 0.5rem; 
+        }
+        .data-colon {
+            width: 10px;
+            text-align: center;
+        }
+        .marksheet-data-row {
+            display: flex;
+            align-items: flex-start;
+            font-size: 15px; /* Adjusting font size for visual match */
+            line-height: 1.5;
+        }
+        /* Style for the subject table to control column width */
+        .marksheet-table td, .marksheet-table th {
+            /* Increased padding for more space between subjects */
+            padding-top: 4px;
+            padding-bottom: 4px;
+        }
+    </style>
+</head>
+<body class="p-8">
+
+    <div class="max-w-7xl mx-auto space-y-8">
+        <header class="text-center">
+            <h1 class="text-3xl font-extrabold text-gray-800">MARKSHEET GENERATOR</h1>
+            <p class="text-sm text-gray-500">Developed by ADESH SOFTWARE SOLUTIONS</p>
+        </header>
+
+        <!-- Input Form Section (Retaining color for contrast on the UI) -->
+        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+            <h2 class="text-xl font-semibold mb-4 text-orange-600">Student and Examination Details</h2>
+            <!-- Updated grid for 4 inputs -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                <!-- 1. Examination Selector -->
+                <div>
+                    <label for="examination" class="block text-sm font-medium text-gray-700 mb-1">Examination</label>
+                    <select id="examination" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500">
+                        <!-- Options generated dynamically based on Winter/Summer and years 2022-2028 -->
+                    </select>
+                </div>
+
+                <!-- 2. NEW: Semester Selector -->
+                <div>
+                    <label for="semesterSelector" class="block text-sm font-medium text-gray-700 mb-1">Select Semester</label>
+                    <select id="semesterSelector" onchange="initializeSubjectInputs(this.value)" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500">
+                        <!-- Options generated dynamically -->
+                    </select>
+                </div>
+
+                <!-- 3. PRN No. -->
+                <div>
+                    <label for="prn" class="block text-sm font-medium text-gray-700 mb-1">PRN NO.</label>
+                    <input type="text" id="prn" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500" placeholder="e.g., 2021033400012345">
+                </div>
+                
+                <!-- 4. Student Name -->
+                <div>
+                    <label for="studentName" class="block text-sm font-medium text-gray-700 mb-1">Student Name</label>
+                    <input type="text" id="studentName" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500" placeholder="e.g., Adesh Suryavanshi">
+                </div>
+            </div>
+
+            <h2 class="text-xl font-semibold mt-6 mb-4 text-orange-600">Subject Grades (<span id="currentSemesterLabel">Third (DSY)</span> Subjects)</h2>
+            <div id="subjectInputs" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                <!-- Subject grade inputs will be generated here -->
+            </div>
+
+            <div class="mt-8 flex justify-center space-x-4">
+                <button onclick="renderMarksheet()" class="px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 transition duration-150 transform hover:scale-105">
+                    Generate / Update Marksheet
+                </button>
+                <button onclick="downloadPDF()" id="downloadButton" class="px-6 py-3 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 transition duration-150 transform hover:scale-105" disabled>
+                    Download as PDF
+                </button>
+            </div>
+        </div>
+
+        <!-- Marksheet Output Section (The content to be printed) -->
+        <div id="marksheet-output" class="marksheet-page bg-white mx-auto p-10 relative">
+            <p class="text-center text-gray-500 italic mt-4">Please click "Generate Marksheet" to see the preview.</p>
+        </div>
+
+    </div>
+
+<script>
+    // --- Data Definition ---
+    const GRADES = {
+        'O (Outstanding)': 10,
+        'A (Excellent)': 9,
+        'B (Very Good)': 8,
+        'C (Good)': 7,
+        'D (Fair)': 6,
+        'E (Pass)': 5,
+        'F (Fail)': 0,
+        'Ab (Absent)': 0
+    };
+
+    // Consolidated subject data, keyed by semester name
+    const SEMESTER_DATA = {
+        'First': [
+            { code: 'BP101T', name: 'Human Anatomy & Physiology', credits: 4 },
+            { code: 'BP102T', name: 'Pharmaceutical Analysis-I', credits: 4 },
+            { code: 'BP103T', name: 'Pharmaceutics-I', credits: 4 },
+            { code: 'BP104T', name: 'Pharmaceutical Inorganic Chemistry', credits: 4 },
+            { code: 'BP105T', name: 'Communication Skill', credits: 2 },
+            { code: 'BP107P', name: 'Human Anatomy & Physiology', credits: 2 },
+            { code: 'BP108P', name: 'Pharmaceutical Analysis-I', credits: 2 },
+            { code: 'BP109P', name: 'Pharmaceutics-I', credits: 2 },
+            { code: 'BP110P', name: 'Pharmaceutical Inorganic Chemistry', credits: 2 },
+            { code: 'BP111P', name: 'Communication Skill', credits: 1 },
+        ],
+        'Second': [
+            { code: 'BP201T', name: 'Human Anatomy & Physiology II', credits: 4 },
+            { code: 'BP202T', name: 'Pharmaceutical Organic Chemistry I', credits: 4 },
+            { code: 'BP203T', name: 'Biochemistry', credits: 4 },
+            { code: 'BP204T', name: 'Pathophysiology', credits: 4 },
+            { code: 'BP205T', name: 'Computer Applications In Pharmacy', credits: 3 },
+            { code: 'BP206T', name: 'Enviornmental Sciences', credits: 3 },
+            { code: 'BP207P', name: 'Human Anatomy & Physiology II', credits: 2 },
+            { code: 'BP208P', name: 'Pharmaceutical Organic Chemistry I', credits: 2 },
+            { code: 'BP209P', name: 'Biochemistry', credits: 2 },
+            { code: 'BP210P', name: 'Computer Applications In Pharmacy', credits: 1 },
+        ],
+        'Third': [
+            { code: 'BP301T', name: 'Pharmaceutical Organic Chemistry II', credits: 4 },
+            { code: 'BP302T', name: 'Physical Pharmaceutics I', credits: 4 },
+            { code: 'BP303T', name: 'Pharmaceutical Microbiology', credits: 4 },
+            { code: 'BP304T', name: 'Pharmaceutical Engineering', credits: 4 },
+            { code: 'BP305P', name: 'Pharmaceutical Organic Chemistry II', credits: 4 },
+            { code: 'BP306P', name: 'Physical Pharmaceutics I', credits: 2 },
+            { code: 'BP307P', name: 'Pharmaceutical Microbiology', credits: 2 },
+            { code: 'BP308P', name: 'Pharmaceutical Engineering', credits: 2 },
+        ],
+        // DSY (Direct Second Year) - Used in previous versions
+        'Third (DSY)': [ 
+            { code: 'BP301T', name: 'Pharmaceutical Organic Chemistry II', credits: 4 },
+            { code: 'BP302T', name: 'Physical Pharmaceutics I', credits: 4 },
+            { code: 'BP303T', name: 'Pharmaceutical Microbiology', credits: 4 },
+            { code: 'BP304T', name: 'Pharmaceutical Engineering', credits: 4 },
+            { code: 'BP305P', name: 'Pharmaceutical Organic Chemistry II', credits: 4 },
+            { code: 'BP306P', name: 'Physical Pharmaceutics I', credits: 2 },
+            { code: 'BP307P', name: 'Pharmaceutical Microbiology', credits: 2 },
+            { code: 'BP308P', name: 'Pharmaceutical Engineering', credits: 2 },
+            { code: 'BP102T', name: 'Pharmaceutical Analysis-I', credits: 4 },
+            { code: 'BP105T', name: 'Communication Skill', credits: 2 },
+            { code: 'BP108P', name: 'Pharmaceutical Analysis-I', credits: 2 },
+            { code: 'BP111P', name: 'Communication Skill', credits: 1 },
+        ],
+        'Fourth': [
+            { code: 'BP401T', name: 'Pharmaceutical Organic Chemistry III', credits: 4 },
+            { code: 'BP402T', name: 'Medicinal Chemistry I', credits: 4 },
+            { code: 'BP403T', name: 'Physical Pharmaceutics II', credits: 4 },
+            { code: 'BP404T', name: 'Pharmacology I', credits: 4 },
+            { code: 'BP405T', name: 'Pharmacognosy And Phytochemistry-I', credits: 4 },
+            { code: 'BP406P', name: 'Medicinal Chemistry I', credits: 2 },
+            { code: 'BP407P', name: 'Physical Pharmaceutics II', credits: 2 },
+            { code: 'BP408P', name: 'Pharmacology I', credits: 2 },
+            { code: 'BP409P', name: 'Pharmacognosy I', credits: 2 },
+        ],
+        'Fourth (DSY)': [
+            { code: 'BP401T', name: 'Pharmaceutical Organic Chemistry III', credits: 4 },
+            { code: 'BP402T', name: 'Medicinal Chemistry I', credits: 4 },
+            { code: 'BP403T', name: 'Physical Pharmaceutics II', credits: 4 },
+            { code: 'BP404T', name: 'Pharmacology I', credits: 4 },
+            { code: 'BP405T', name: 'Pharmacognosy And Phytochemistry-I', credits: 4 },
+            { code: 'BP406P', name: 'Medicinal Chemistry I', credits: 2 },
+            { code: 'BP407P', name: 'Physical Pharmaceutics II', credits: 2 },
+            { code: 'BP408P', name: 'Pharmacology I', credits: 2 },
+            { code: 'BP409P', name: 'Pharmacognosy I', credits: 2 },
+            { code: 'BP205T', name: 'Computer Applications in Pharmacy', credits: 3 },
+            { code: 'BP206T', name: 'Environmental Sciences', credits: 3 },
+            { code: 'BP210P', name: 'Computer Applications in Pharmacy', credits: 1 },
+        ],
+        'Fifth': [
+            { code: 'BP501T', name: 'Medicinal Chemistry II', credits: 4 },
+            { code: 'BP502T', name: 'Industrial Pharmacy I', credits: 4 },
+            { code: 'BP503T', name: 'Pharmacology II', credits: 4 },
+            { code: 'BP504T', name: 'Pharmacognosy and Phytochemistry II', credits: 4 },
+            { code: 'BP505T', name: 'Pharmaceutical Jurisprudence', credits: 4 },
+            { code: 'BP506P', name: 'Industrial Pharmacy I', credits: 2 },
+            { code: 'BP507P', name: 'Pharmacology II', credits: 2 },
+            { code: 'BP508P', name: 'Pharmacognosy and Phytochemistry II', credits: 2 },
+        ],
+        'Sixth': [
+            { code: 'BP601T', name: 'Medicinal Chemistry III', credits: 4 },
+            { code: 'BP602T', name: 'Pharmacology III', credits: 4 },
+            { code: 'BP603T', name: 'Herbal Drug Technology', credits: 4 },
+            { code: 'BP604T', name: 'Biopharmaceutics & Pharmacokinetics', credits: 4 },
+            { code: 'BP605T', name: 'Pharmaceutical Biotechnology', credits: 4 },
+            { code: 'BP606T', name: 'Quality Assurance', credits: 4 },
+            { code: 'BP607P', name: 'Medicinal Chemistry III', credits: 2 },
+            { code: 'BP608P', name: 'Pharmacology III', credits: 2 },
+            { code: 'BP609P', name: 'Herbal Drug Technology', credits: 2 },
+        ],
+        'Seventh': [
+            { code: 'BP701T', name: 'Instrumental Methods of Analysis', credits: 4 },
+            { code: 'BP702T', name: 'Industrial Pharmacy II', credits: 4 },
+            { code: 'BP703T', name: 'Pharmacy Practice', credits: 4 },
+            { code: 'BP704T', name: 'Novel Drug Delivery System', credits: 4 },
+            { code: 'BP705P', name: 'Instrumental Methods of Analysis', credits: 2 },
+            { code: 'BP706PS', name: 'Practice School*', credits: 6 },
+        ],
+        'Eighth': [
+            { code: 'BP801T', name: 'Biostatistics and Research Methodology', credits: 4 },
+            { code: 'BP802T', name: 'Social and Preventive Pharmacy', credits: 4 },
+            { code: 'BP809ET', name: 'Cosmetic Science', credits: 4 },
+            { code: 'BP811ET', name: 'Advanced Instrumentation Techniques', credits: 4 },
+            { code: 'BP813PW', name: 'Project Work', credits: 6 },
+        ]
+    };
+
+    // --- Utility Functions ---
+
+    /**
+     * Initializes the Examination dropdown with options from Winter 2022 to Summer 2028.
+     */
+    function initializeExaminationDropdown() {
+        const select = document.getElementById('examination');
+        // Clear existing options
+        select.innerHTML = ''; 
+        const startYear = 2022;
+        const endYear = 2028;
+
+        for (let year = startYear; year <= endYear; year++) {
+            const winter = document.createElement('option');
+            winter.value = `WINTER ${year}`;
+            winter.textContent = `WINTER ${year}`;
+            select.appendChild(winter);
+
+            const summer = document.createElement('option');
+            summer.value = `SUMMER ${year}`;
+            summer.textContent = `SUMMER ${year}`;
+            select.appendChild(summer);
+        }
+        // Set a sensible default
+        select.value = `WINTER 2024`;
+    }
+
+    /**
+     * Initializes the Semester dropdown with all available semesters.
+     */
+    function initializeSemesterDropdown() {
+        const select = document.getElementById('semesterSelector');
+        const semesters = Object.keys(SEMESTER_DATA);
+
+        select.innerHTML = semesters.map(sem => 
+            `<option value="${sem}">${sem}</option>`
+        ).join('');
+
+        // Set the default selection to the semester from the previous marksheet version
+        select.value = 'Third (DSY)';
+    }
+
+    /**
+     * Generates HTML inputs for subjects based on the selected semester.
+     * @param {string} selectedSemester - The key for the SEMESTER_DATA object.
+     */
+    function initializeSubjectInputs(selectedSemester) {
+        // Default to 'Third (DSY)' if called without a value
+        const semester = selectedSemester || document.getElementById('semesterSelector').value || 'Third (DSY)';
+        const subjects = SEMESTER_DATA[semester] || [];
+
+        const container = document.getElementById('subjectInputs');
+        const currentSemesterLabel = document.getElementById('currentSemesterLabel');
+        
+        currentSemesterLabel.textContent = semester;
+
+        // Use only the first letter of the grade (e.g., 'O' from 'O (Outstanding)') for the value
+        const gradeOptions = Object.keys(GRADES).map(grade => `<option value="${grade.split(' ')[0]}">${grade}</option>`).join('');
+
+        container.innerHTML = subjects.map(subject => `
+            <div>
+                <label for="grade-${subject.code}" class="block text-sm font-medium text-gray-700 truncate" title="${subject.name} (${subject.code})">${subject.code}</label>
+                <select id="grade-${subject.code}" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500">
+                    <option value="" disabled selected>Select Grade</option>
+                    ${gradeOptions}
+                </select>
+            </div>
+        `).join('');
+
+        // Reset the marksheet output when subjects change
+        document.getElementById('marksheet-output').innerHTML = '<p class="text-center text-gray-500 italic mt-4">Please click "Generate Marksheet" to see the preview.</p>';
+        document.getElementById('downloadButton').disabled = true;
+    }
+
+    /**
+     * Reads form data, calculates SGPA, and renders the marksheet preview.
+     */
+    function renderMarksheet() {
+        const examination = document.getElementById('examination').value;
+        const selectedSemester = document.getElementById('semesterSelector').value;
+        const prn = document.getElementById('prn').value.toUpperCase().trim();
+        const studentName = document.getElementById('studentName').value.toUpperCase().trim();
+        const outputDiv = document.getElementById('marksheet-output');
+        const downloadBtn = document.getElementById('downloadButton');
+        
+        const currentSubjects = SEMESTER_DATA[selectedSemester] || [];
+
+        let totalCreditPoints = 0;
+        let totalCredits = 0;
+        let gradeData = [];
+
+        // 1. Validate mandatory fields
+        if (!prn || !studentName) {
+            outputDiv.innerHTML = `<p class="text-center text-red-600 italic mt-4 p-4 border border-red-300 bg-red-50 rounded-lg">Please fill in **PRN NO.** and **Student Name** before generating the marksheet.</p>`;
+            downloadBtn.disabled = true;
+            return;
+        }
+
+        // 2. Collect grade data and calculate total credit points
+        let allGradesSelected = true;
+        currentSubjects.forEach(subject => {
+            const selectElement = document.getElementById(`grade-${subject.code}`);
+            
+            // Check if the select element for this subject exists (it should, but as a safeguard)
+            if (!selectElement) {
+                console.error(`Grade selector for ${subject.code} not found.`);
+                return;
+            }
+
+            const selectedGrade = selectElement.value;
+            
+            // Map the selected grade code (e.g., 'O') back to the full key (e.g., 'O (Outstanding)') to get points
+            const fullGradeKey = Object.keys(GRADES).find(key => key.startsWith(selectedGrade));
+            const gradePoints = GRADES[fullGradeKey] || 0; // Default to 0 for 'F' or 'Ab'
+            
+            if (!selectedGrade) {
+                allGradesSelected = false;
+            }
+
+            const creditPoints = gradePoints * subject.credits;
+            totalCreditPoints += creditPoints;
+            totalCredits += subject.credits;
+
+            gradeData.push({
+                ...subject,
+                grade: selectedGrade || 'N/A',
+                gradePoints: gradePoints,
+                creditPoints: creditPoints
+            });
+        });
+
+        if (!allGradesSelected) {
+            outputDiv.innerHTML = `<p class="text-center text-red-600 italic mt-4 p-4 border border-red-300 bg-red-50 rounded-lg">Please select a grade for **ALL** subjects in the **${selectedSemester}** semester.</p>`;
+            downloadBtn.disabled = true;
+            return;
+        }
+
+        // 3. Calculate SGPA
+        const sgpa = totalCredits > 0 ? (totalCreditPoints / totalCredits).toFixed(2) : '0.00';
+        
+        // 4. Generate HTML for Marksheet Output (Refined for exact visual match)
+        const subjectRows = gradeData.map((data, index) => {
+            // Apply different spacing based on subject groupings (using DSY grouping as a general guide)
+            const paddingTopClass = (selectedSemester === 'Third (DSY)' && (index === 5 || index === 8 || index === 10)) ? 'pt-4' : 'pt-0'; 
+            return `
+            <tr class="align-top">
+                <td class="w-[18%] pl-2 text-sm font-mono ${paddingTopClass}">${data.code}</td>
+                <td class="w-[58%] pl-2 text-sm whitespace-pre-line ${paddingTopClass}">${data.name}</td>
+                <td class="w-[12%] text-sm ${paddingTopClass}">${data.credits}</td>
+                <td class="w-[12%] text-sm font-bold ${paddingTopClass}">${data.grade}</td>
+            </tr>
+            `;
+        }).join('');
+
+        const marksheetHtml = `
+            <div class="space-y-4">
+                
+                <!-- University & College Header - ORANGE HEADER -->
+                <div class="w-full py-2 text-center text-base font-bold uppercase marksheet-header-orange">
+                    Dr. Rajendra Gode College of Pharmacy, Amravati
+                </div>
+                <div class="text-center text-gray-700 pt-1 pb-4">
+                    <p class="text-xs">University – Mardi Road, Amravati – 444602. Dist – Amravati (M.S)</p>
+                    <h2 class="text-base font-semibold text-gray-800 mt-4">Dr. Babasaheb Ambedkar Technological University, Lonere-Raigad,</h2>
+                    <h2 class="text-base font-semibold text-gray-800">Maharashtra</h2>
+                </div>
+
+
+                <!-- Student Details - Aligned and spaced -->
+                <div class="text-gray-800 space-y-1 mt-6">
+                    <!-- Examination -->
+                    <div class="marksheet-data-row">
+                        <span class="data-label">Examination</span>
+                        <span class="data-colon">:</span>
+                        <span id="out-examination">${examination}</span>
+                    </div>
+
+                    <!-- Other details structured for alignment -->
+                    <div class="marksheet-data-row">
+                        <span class="data-label">Faculty</span>
+                        <span class="data-colon">:</span>
+                        <span>Pharmacy</span>
+                    </div>
+                    <div class="marksheet-data-row">
+                        <span class="data-label">Institute Name</span>
+                        <span class="data-colon">:</span>
+                        <span>Dr. Rajendra Gode College of Pharmacy</span>
+                    </div>
+                    <div class="marksheet-data-row">
+                        <span class="data-label">Programme</span>
+                        <span class="data-colon">:</span>
+                        <span>Bachelor of Pharmacy</span>
+                    </div>
+                    <div class="marksheet-data-row">
+                        <span class="data-label">PRN</span>
+                        <span class="data-colon">:</span>
+                        <span class="font-bold" id="out-prn">${prn}</span>
+                    </div>
+                    <div class="marksheet-data-row">
+                        <span class="data-label">Semester</span>
+                        <span class="data-colon">:</span>
+                        <span>${selectedSemester}</span>
+                    </div>
+                    <div class="marksheet-data-row">
+                        <span class="data-label">Student Name</span>
+                        <span class="data-colon">:</span>
+                        <span class="font-bold" id="out-name">${studentName}</span>
+                    </div>
+                </div>
+
+                <!-- Marks Table Header - EXACT ALIGNMENT MATCH -->
+                <div class="flex mt-8 text-sm font-bold border-b border-black pb-1">
+                    <span class="w-[18%] pl-2">Subject Code</span>
+                    <span class="w-[58%] pl-2">Subject Name</span>
+                    <span class="w-[12%]">Credits</span>
+                    <span class="w-[12%]">Grade</span>
+                </div>
+
+                <!-- Marks Table Body - using table for column control -->
+                <table class="w-full border-collapse marksheet-table">
+                    <tbody>
+                        ${subjectRows}
+                    </tbody>
+                </table>
+                
+                <!-- SGPA Footer -->
+                <div class="text-base mt-4">
+                    <p class="font-bold text-gray-800">SGPA: <span id="out-sgpa" class="font-normal text-black">${sgpa}</span></p>
+                </div>
+
+                <!-- Principal Signature - ONLY AT BOTTOM -->
+                <div class="w-full h-px bg-black mt-40"></div>
+                <div class="flex justify-end items-end mt-1">
+                    <p class="text-base font-bold text-gray-800">Principal</p>
+                </div>
+            </div>
+        `;
+        
+        // 5. Update UI and enable download button
+        outputDiv.innerHTML = marksheetHtml;
+        downloadBtn.disabled = false;
+    }
+
+    /**
+     * Generates a PDF from the rendered marksheet using html2canvas and jsPDF.
+     */
+    async function downloadPDF() {
+        const input = document.getElementById('marksheet-output');
+        const studentName = document.getElementById('studentName').value.toUpperCase().trim() || 'STUDENT';
+        const examination = document.getElementById('examination').value.replace(/\s/g, '_');
+        const filename = `${studentName}_MARKSHEET_${examination}.pdf`;
+
+        // Display a simple loading message
+        const downloadBtn = document.getElementById('downloadButton');
+        const originalText = downloadBtn.textContent;
+        downloadBtn.textContent = 'Generating PDF...';
+        downloadBtn.disabled = true;
+
+        try {
+            const canvas = await html2canvas(input, {
+                scale: 2, // Higher scale for better quality in PDF
+                useCORS: true,
+                // Only capture the bounding box of the marksheet content
+                width: input.offsetWidth,
+                height: input.offsetHeight,
+            });
+
+            const imgData = canvas.toDataURL('image/png');
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4'); 
+
+            const imgWidth = 210; // A4 width in mm
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            
+            // Add the image to the PDF
+            pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
+            pdf.save(filename);
+            
+            // Restore button state
+            downloadBtn.textContent = originalText;
+            downloadBtn.disabled = false;
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            // Display an error message to the user
+            const outputDiv = document.getElementById('marksheet-output');
+            outputDiv.innerHTML += `<p class="text-center text-red-600 mt-4">An error occurred during PDF generation. See console for details.</p>`;
+            
+            // Restore button state
+            downloadBtn.textContent = originalText;
+            downloadBtn.disabled = false;
+        }
+    }
+
+    // --- Initialization ---
+    window.onload = () => {
+        initializeExaminationDropdown();
+        initializeSemesterDropdown();
+        // Initialize subjects for the default selected semester
+        initializeSubjectInputs(document.getElementById('semesterSelector').value); 
+    };
+
+</script>
+</body>
+</html>
